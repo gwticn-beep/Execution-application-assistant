@@ -1,21 +1,29 @@
 {
   "name": "execution-materials-assistant",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
+    "prepare:ocr": "node scripts/prepare-ocr.mjs",
+    "predev": "npm run prepare:ocr",
     "dev": "vite --host 127.0.0.1",
+    "prebuild": "npm run prepare:ocr",
     "build": "tsc -b && vite build",
-    "build:single": "npm run build && node scripts/package-v1.mjs",
+    "build:offline": "npm run build && node scripts/package-offline.mjs",
+    "build:single": "node scripts/package-v1.mjs",
     "test": "tsx --test tests/*.test.ts",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "docx": "9.7.1",
     "fflate": "0.8.3",
     "pdfjs-dist": "6.3.289",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tesseract.js": "7.0.0",
+    "utif": "3.1.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

@@ -25,7 +25,7 @@ export function createInitialState(): AppState {
     calculation: { mode: "principal", annualRate: "", startDate: "", endDate: "", basisNote: "" }, result: null,
     checklist: Object.fromEntries(Object.keys(CHECKLIST).map(k => [k, false])),
     reviews: Object.fromEntries(REVIEW_ITEMS.map(x => [x.key, { note: "", confirmedAt: null }])) as AppState["reviews"],
-    caseConfirmedAt: null, outputConfirmedAt: null, sources: {},
+    caseConfirmedAt: null, outputConfirmedAt: null, sources: {}, userEdited: {},
   };
 }
 export function scopeValid(a: ScopeAnswers) {
@@ -97,9 +97,9 @@ export function invalidateCase(s: AppState): AppState {
     reviews: Object.fromEntries(REVIEW_ITEMS.map(x => [x.key, { ...s.reviews[x.key], confirmedAt: null }])) as AppState["reviews"] };
 }
 export function updateCase(s: AppState, key: keyof CaseData, value: string): AppState {
-  if (s.caseData[key] === value) return s;
-  const sources = { ...s.sources }; delete sources[key];
-  return { ...invalidateCase(s), caseData: { ...s.caseData, [key]: value }, sources };
+  if (s.caseData[key] === value && s.userEdited[key]) return s;
+  // Keep the recognized source for comparison, including after a deliberate clear.
+  return { ...invalidateCase(s), caseData: { ...s.caseData, [key]: value }, userEdited: { ...s.userEdited, [key]: true } };
 }
 export function updateScope(s: AppState, key: ScopeKey, value: boolean): AppState {
   return { ...invalidateCase(s), scopeAnswers: { ...s.scopeAnswers, [key]: value } };

@@ -1,0 +1,32 @@
+import { cp, copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const packageRoot = name => dirname(require.resolve(`${name}/package.json`));
+const target = resolve(root, "public/ocr");
+await mkdir(target, { recursive: true });
+const packages = ["tesseract.js", "tesseract.js-core", "@tesseract.js-data/chi_sim", "@tesseract.js-data/eng", "utif", "pdfjs-dist"];
+const versions = {};
+for (const name of packages) versions[name] = JSON.parse(await readFile(resolve(packageRoot(name), "package.json"), "utf8")).version;
+for (const file of ["tesseract.min.js", "worker.min.js"]) await copyFile(resolve(packageRoot("tesseract.js"), "dist", file), resolve(target, file));
+// v7 selects scalar, SIMD or relaxed-SIMD at runtime; keep every official core build.
+const core = packageRoot("tesseract.js-core");
+await mkdir(resolve(target, "core"), { recursive: true });
+for (const file of await readdir(core)) if (/^tesseract-core.*\.wasm(?:\.js)?$/.test(file)) await copyFile(resolve(core, file), resolve(target, "core", file));
+await mkdir(resolve(target, "lang"), { recursive: true });
+for (const lang of ["chi_sim", "eng"]) await copyFile(resolve(packageRoot(`@tesseract.js-data/${lang}`), "4.0.0_best_int", `${lang}.traineddata.gz`), resolve(target, "lang", `${lang}.traineddata.gz`));
+await copyFile(resolve(root, "src/ocr-runtime/runner.js"), resolve(target, "runner.js"));
+await copyFile(require.resolve("utif"), resolve(target, "utif.js"));
+const utifRequire = createRequire(require.resolve("utif"));
+await copyFile(resolve(dirname(utifRequire.resolve("pako/package.json")), "dist/pako.min.js"), resolve(target, "pako.min.js"));
+await mkdir(resolve(target, "licenses"), { recursive: true });
+for (const [name, file] of [["tesseract.js", "LICENSE.md"], ["tesseract.js-core", "LICENSE"], ["utif", "LICENSE"], ["pdfjs-dist", "LICENSE"]]) await copyFile(resolve(packageRoot(name), file), resolve(target, "licenses", `${name}.txt`));
+await copyFile(resolve(dirname(utifRequire.resolve("pako/package.json")), "LICENSE"), resolve(target, "licenses/pako.txt"));
+for (const lang of ["chi_sim", "eng"]) await copyFile(resolve(packageRoot(`@tesseract.js-data/${lang}`), "package.json"), resolve(target, "licenses", `${lang}-package.json`));
+const pdf = packageRoot("pdfjs-dist");
+for (const dir of ["cmaps", "standard_fonts", "wasm"]) await cp(resolve(pdf, dir), resolve(target, "pdfjs", dir), { recursive: true });
+await writeFile(resolve(target, "versions.json"), JSON.stringify(versions, null, 2) + "\n");
+console.log("OCR 程序、简体中文/英文模型与 PDF 渲染资源已准备（从锁定依赖复制，不访问外部 OCR 服务）。");

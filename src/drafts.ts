@@ -13,10 +13,13 @@ function string(v: unknown, label: string, max = 300): string {
   if (typeof v !== "string" || v.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v)) throw new Error(`${label}类型、长度或字符不正确。`);
   return v;
 }
-function source(v: unknown): Source {
+function source(v: unknown, field: keyof CaseData): Source {
   const o = object(v, "字段来源");
   if (!MATERIAL_KEYS.includes(o.material as CaseMaterialKey)) throw new Error("材料来源类别不正确。");
-  return { material: o.material as CaseMaterialKey, name: string(o.name, "来源文件名"), location: string(o.location, "来源位置"), quote: string(o.quote, "原文摘录", 800) };
+  if (o.method !== undefined && o.method !== "ocr" && o.method !== "text") throw new Error("字段来源的识别方式不正确。");
+  if (o.confidence !== undefined && (typeof o.confidence !== "number" || !Number.isFinite(o.confidence) || o.confidence < 0 || o.confidence > 100)) throw new Error("OCR参考分数不正确。");
+  return { material: o.material as CaseMaterialKey, name: string(o.name, "来源文件名"), location: string(o.location, "来源位置"), quote: string(o.quote, "原文摘录", 800),
+    method: o.method as Source["method"], confidence: o.confidence as number | undefined, value: o.value === undefined ? undefined : string(o.value, "原识别值", field === "requestSummary" || field === "assetClue" ? 4000 : 300) };
 }
 export function makeDraft(state: AppState, materials: CaseMaterials): DraftData {
   const index = Object.fromEntries(MATERIAL_KEYS.map(k => [k, materials[k] ? { name: materials[k]!.name, size: materials[k]!.size } : null])) as DraftData["materials"];
@@ -27,7 +30,7 @@ export function parseDraft(text: string): { state: AppState; materials: CaseMate
   let json: unknown;
   try { json = JSON.parse(text); } catch { throw new Error("文件不是有效JSON，未改变当前草稿。"); }
   const root = object(json, "草稿");
-  if (root.version !== 1 && root.version !== 2) throw new Error("不支持该草稿版本，请使用v1演示或v1.0应用导出的草稿。");
+  if (root.version !== 1 && root.version !== 2) throw new Error("不支持该草稿版本，请使用本工具v1演示或v1.x应用导出的草稿。");
   if (root.version === 2 && root.app !== "execution-materials-assistant") throw new Error("不是本工具的草稿文件。");
   const raw = root.version === 1 ? root : object(root.state, "草稿内容");
   const state = createInitialState();
@@ -57,7 +60,12 @@ export function parseDraft(text: string): { state: AppState; materials: CaseMate
     const reviews = object(raw.reviews ?? {}, "核对记录");
     for (const item of REVIEW_ITEMS) if (reviews[item.key] !== undefined) state.reviews[item.key].note = string(object(reviews[item.key], "核对项").note, "核对依据", 2000);
     const sources = object(raw.sources ?? {}, "字段来源");
-    for (const k of Object.keys(FIELD_LABELS) as (keyof CaseData)[]) if (sources[k] !== undefined) state.sources[k] = source(sources[k]);
+    for (const k of Object.keys(FIELD_LABELS) as (keyof CaseData)[]) if (sources[k] !== undefined) state.sources[k] = source(sources[k], k);
+    const userEdited = object(raw.userEdited ?? {}, "手工修改标记");
+    for (const k of Object.keys(FIELD_LABELS) as (keyof CaseData)[]) {
+      if (userEdited[k] !== undefined && typeof userEdited[k] !== "boolean") throw new Error("手工修改标记格式不正确。");
+      if (userEdited[k] === true) state.userEdited[k] = true;
+    }
     const index = object(root.materials ?? {}, "材料索引");
     for (const k of MATERIAL_KEYS) {
       if (index[k] === undefined || index[k] === null) continue;

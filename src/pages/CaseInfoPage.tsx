@@ -4,10 +4,12 @@ import type { AppState, Candidate, CaseAnalysisStatus, CaseData, CaseMaterialKey
 import { Button, Field, Input, Notice, SectionHeading, Select, Textarea } from "../components/Ui";
 import { Icon } from "../components/Icon";
 import { MATERIAL_KEYS } from "../drafts";
+import { sameFieldValue } from "../recognition";
 
 type Props = {
   state: AppState; materials: CaseMaterials; analysisStatus: CaseAnalysisStatus;
   onAnalyze: () => void; onMaterialChange: (key: CaseMaterialKey, file: File | null) => void;
+  onCancel: () => void;
   onApplyCandidate: (candidate: Candidate) => void;
   onChange: (field: keyof CaseData, value: string) => void; onConfirm: (v: boolean) => void;
   onReviewChange: (key: ReviewKey, note: string, confirmed: boolean) => void;
@@ -20,37 +22,39 @@ const sections: { title: string; hint: string; fields: (keyof CaseData)[] }[] = 
   { title: "执行请求", hint: "本金在案件、试算、文书与复制页使用同一数值；其他请求请明确写入简述。", fields: ["principal", "requestSummary"] },
 ];
 const optionalFields = ["applicantId", "respondentId", "respondentAddress", "assetClue"];
-export function CaseInfoPage({ state, materials, analysisStatus, onAnalyze, onMaterialChange, onApplyCandidate, onChange, onConfirm, onReviewChange, onBack, onContinue }: Props) {
+export function CaseInfoPage({ state, materials, analysisStatus, onAnalyze, onCancel, onMaterialChange, onApplyCandidate, onChange, onConfirm, onReviewChange, onBack, onContinue }: Props) {
   const errors = caseErrors(state.caseData);
   const missingCount = Object.keys(errors).length;
   const candidates = MATERIAL_KEYS.flatMap(k => materials[k]?.candidates ?? []);
-  const bind = (field: keyof CaseData) => ({ value: state.caseData[field], maxLength: ["requestSummary", "assetClue"].includes(field) ? 4000 : 300,
+  const autoFields = (Object.keys(state.sources) as (keyof CaseData)[]).filter(field => !state.userEdited[field] && state.caseData[field] === state.sources[field]?.value);
+  const bind = (field: keyof CaseData) => ({ id: `case-${field}`, "aria-label": FIELD_LABELS[field], value: state.caseData[field], maxLength: ["requestSummary", "assetClue"].includes(field) ? 4000 : 300,
     "aria-invalid": Boolean(errors[field]), "aria-describedby": errors[field] ? `error-${field}` : undefined,
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => onChange(field, e.target.value),
   });
   return <div className="page">
-    <div className="page-heading"><div><h1>请按顺序填写案件信息</h1><p>先读取材料中的文字，或直接手工填写。候选须逐项采纳，最后再确认当前字段。</p></div><span className="page-heading__meta"><Icon name="lock" size={16} />本地读取 · 不上传</span></div>
+    <div className="page-heading"><div><h1>请按顺序填写案件信息</h1><p>OCR识别后自动填入可确定的空白字段；您始终可以修改。核对原件后，再确认案件信息。</p></div><span className="page-heading__meta"><Icon name="lock" size={16} />本地OCR · 不上传</span></div>
     <section className="case-import-panel" aria-labelledby="case-import-title">
-      <div className="case-import-panel__heading"><div><h2 id="case-import-title">导入案件材料</h2><p>每类1份、每份最多20MB。可读取文本PDF（最多50页）、DOCX正文与UTF-8 TXT。图片及旧DOC只可保留、人工查看，不做OCR。</p></div><span>可选</span></div>
+      <div className="case-import-panel__heading"><div><h2 id="case-import-title">导入案件材料</h2><p>每类1份、每份最多20MB。PDF逐页OCR（最多50页），支持JPG、PNG、WebP、BMP和多页TIFF；DOCX、TXT读取正文。简体中文及英文识别，文件不上传。</p></div><span>可选</span></div>
       <div className="case-import-grid">{MATERIAL_KEYS.map(key => {
         const material = materials[key];
         return <div className={`case-import-card ${material ? "has-file" : ""}`} key={key}>
           <span className="case-import-card__icon"><Icon name="file" size={20} /></span>
-          <div className="case-import-card__copy"><h3>导入{MATERIAL_LABELS[key]}</h3><p>{key === "secondInstance" ? "有二审时选取；冲突信息保留双方候选" : key === "identity" ? "证件文字请人工核对，本版本不自动识别号码" : "可选判决书、裁定书或调解书"}</p>
-            {material ? <><strong className="case-import-card__file">{material.name} · {(material.size / 1024).toFixed(1)} KB</strong><p className={material.status === "error" ? "inline-warning" : ""}>{material.message}</p></> : <span className="case-import-card__empty">尚未选择文件</span>}
+          <div className="case-import-card__copy"><h3>导入{MATERIAL_LABELS[key]}</h3><p>{key === "secondInstance" ? "有二审时选取；不同字段值保留候选，不自动决定" : key === "identity" ? "支持证件OCR；未明确属于申请人或被执行人的文字需人工对应" : "可选判决书、裁定书或调解书"}</p>
+            {material ? <><strong className="case-import-card__file">{material.name} · {(material.size / 1024).toFixed(1)} KB</strong><p role="status" className={material.status === "error" ? "inline-warning" : ""}>{material.message}</p></> : <span className="case-import-card__empty">尚未选择文件</span>}
           </div>
-          <div className="material-buttons"><label className="file-picker"><Icon name="upload" size={15} /><span>{material ? "重新选择" : "选择文件"}</span><input accept=".pdf,.docx,.txt,.doc,.jpg,.jpeg,.png" aria-label={`导入${MATERIAL_LABELS[key]}`} disabled={analysisStatus === "parsing"} type="file" onChange={e => { const file = e.target.files?.[0]; if (file) onMaterialChange(key, file); e.target.value = ""; }} /></label>{material ? <Button tone="ghost" disabled={analysisStatus === "parsing"} onClick={() => onMaterialChange(key, null)} aria-label={`移除${MATERIAL_LABELS[key]}`}>移除</Button> : null}</div>
+          <div className="material-buttons"><label className="file-picker"><Icon name="upload" size={15} /><span>{material ? "重新选择" : "选择文件"}</span><input accept=".pdf,.docx,.txt,.doc,.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff" aria-label={`导入${MATERIAL_LABELS[key]}`} disabled={analysisStatus === "parsing"} type="file" onChange={e => { const file = e.target.files?.[0]; if (file) onMaterialChange(key, file); e.target.value = ""; }} /></label>{material ? <Button tone="ghost" disabled={analysisStatus === "parsing"} onClick={() => onMaterialChange(key, null)} aria-label={`移除${MATERIAL_LABELS[key]}`}>移除</Button> : null}</div>
         </div>;
       })}</div>
-      <div className="case-import-panel__actions"><p><Icon name="shield" size={15} />原文件只在内存中；Word的页眉、图片和修订不作为已解析正文。</p><Button icon="file" disabled={analysisStatus === "parsing" || !MATERIAL_KEYS.some(k => materials[k]?.file)} aria-busy={analysisStatus === "parsing"} onClick={onAnalyze}>{analysisStatus === "parsing" ? "正在本地读取…" : "读取文字与候选"}</Button></div>
+      <div className="case-import-panel__actions"><p><Icon name="shield" size={15} />首次OCR需加载网站提供的程序与模型。原件和识别结果只在本机处理；Word内嵌图片请另存或转PDF。</p><div className="material-buttons">{analysisStatus === "parsing" ? <Button tone="secondary" onClick={onCancel}>取消识别</Button> : null}<Button icon="file" disabled={analysisStatus === "parsing" || !MATERIAL_KEYS.some(k => materials[k]?.file)} aria-busy={analysisStatus === "parsing"} onClick={onAnalyze}>{analysisStatus === "parsing" ? "正在本地识别…" : "OCR识别并自动填入"}</Button></div></div>
     </section>
-    {MATERIAL_KEYS.some(k => materials[k]?.pages.length) ? <details className="source-panel"><summary>查看已读取的原文及位置（仅当前会话）</summary>{MATERIAL_KEYS.map(k => materials[k]?.pages.length ? <section key={k}><h3>{materials[k]!.name}</h3>{materials[k]!.pages.map((p, i) => <div className="source-text" key={i}><strong>{p.location}</strong><pre>{p.text || "本页未读取到文字，可能需要OCR或人工核对。"}</pre></div>)}</section> : null)}</details> : null}
-    {candidates.length ? <section className="candidate-panel"><h2>待采纳的字段候选</h2><p>同字段有不同候选时，请对照一审、二审主文逐项核对。采纳不代表事实已经确认。</p><div className="candidate-list">{candidates.map((c, i) => {
-      const conflict = candidates.some(other => other.field === c.field && other.value !== c.value) || Boolean(state.caseData[c.field] && state.caseData[c.field] !== c.value);
-      return <article className="candidate-row" key={i}><div><strong>{FIELD_LABELS[c.field]}：{c.value}</strong>{conflict ? <span className="status-chip status-chip--warning">存在不同值</span> : null}<p>{c.source.name} · {c.source.location}</p><blockquote>{c.source.quote}</blockquote></div><Button tone="secondary" onClick={() => onApplyCandidate(c)} aria-label={`采纳${FIELD_LABELS[c.field]}候选${i + 1}`}>采纳此值</Button></article>;
+    {autoFields.length ? <Notice title={`已自动填入${autoFields.length}项，仍待您核对`} tone="info">{autoFields.map(field => FIELD_LABELS[field]).join("、")}。可直接编辑或清空，修改后不会被重复识别覆盖。OCR不是法律审查。</Notice> : null}
+    {MATERIAL_KEYS.some(k => materials[k]?.pages.length) ? <details className="source-panel"><summary>查看识别文字及来源位置（仅当前会话）</summary>{MATERIAL_KEYS.map(k => materials[k]?.pages.length ? <section key={k}><h3>{materials[k]!.name}</h3>{materials[k]!.pages.map((p, i) => <div className="source-text" key={i}><strong>{p.location}{p.method === "ocr" ? ` · OCR参考分数${Math.round(p.confidence ?? 0)}/100` : ""}</strong><pre>{p.text || "本页未识别到文字，请对照原件人工核对。"}</pre></div>)}</section> : null)}</details> : null}
+    {candidates.length ? <section className="candidate-panel"><h2>识别字段与核对来源</h2><p>无冲突且达到参考分数要求的字段自动填入空白处。其他候选须人工采纳；参考分数不等于准确率。不会从原告、被告推定执行角色或管辖法院。</p><div className="candidate-list">{candidates.map((c, i) => {
+      const conflict = candidates.some(other => other.field === c.field && !sameFieldValue(c.field, other.value, c.value)) || Boolean(state.caseData[c.field] && !sameFieldValue(c.field, state.caseData[c.field], c.value));
+      return <article className="candidate-row" key={i}><div><strong>{FIELD_LABELS[c.field]}：{c.value}</strong>{conflict ? <span className="status-chip status-chip--warning">存在不同值</span> : null}{state.caseData[c.field] === c.value ? <span className="status-chip status-chip--info">已填入 · 待核对</span> : null}<p>{c.source.name} · {c.source.location}{c.source.method === "ocr" ? ` · 参考分数${Math.round(c.source.confidence ?? 0)}/100` : ""}</p>{c.reason ? <p className="inline-warning">{c.reason}</p> : null}<blockquote>{c.source.quote}</blockquote></div><Button tone="secondary" disabled={analysisStatus === "parsing"} onClick={() => onApplyCandidate(c)} aria-label={`采纳${FIELD_LABELS[c.field]}候选${i + 1}`}>采纳此值</Button></article>;
     })}</div></section> : analysisStatus === "complete" ? <Notice title="未发现可直接提议的字段" tone="info">请查看文件读取结果或已读取原文，手工填写。识别不到不会填入演示人名或金额。</Notice> : null}
     <div className="form-sections">{sections.map((section, i) => <section className="form-section" key={section.title}><SectionHeading number={i + 1} description={section.hint}>{section.title}</SectionHeading><div className="form-grid">
-      {section.fields.map(field => <Field key={field} label={FIELD_LABELS[field]} required={!optionalFields.includes(field)} hint={state.sources[field] ? `已采纳来源：${state.sources[field]!.name} · ${state.sources[field]!.location}（仍须核对）` : undefined}>
+      {section.fields.map(field => <Field key={field} label={FIELD_LABELS[field]} required={!optionalFields.includes(field)} hint={state.sources[field] ? `${state.userEdited[field] ? "已由您修改或采纳" : "自动填入，待核对"}；识别来源：${state.sources[field]!.name} · ${state.sources[field]!.location}${state.sources[field]!.value && state.sources[field]!.value !== state.caseData[field] ? `；原识别值：${state.sources[field]!.value}` : ""}` : state.userEdited[field] ? "您已手工编辑，重复识别不会覆盖（包括主动清空）。" : undefined}>
         {field === "basisType" ? <Select {...bind(field)}><option value="">请选择</option>{["民事判决书", "民事裁定书", "民事调解书"].map(v => <option key={v}>{v}</option>)}</Select>
           : field === "applicantType" || field === "respondentType" ? <Select {...bind(field)}><option value="">请选择</option><option>自然人</option><option>法人或其他组织</option></Select>
           : field === "requestSummary" || field === "assetClue" ? <Textarea rows={field === "requestSummary" ? 4 : 2} {...bind(field)} />

@@ -30,7 +30,7 @@ export function AppShell({ children, currentStep, footerMessage, onStepChange, s
           <span className="brand__mark"><Icon name="scale" size={24} /></span>
           <span className="brand__copy">
             <strong>执行申请材料助手</strong>
-            <span>v1.0 · 本地材料工具</span>
+            <span>v1.1 · 本地OCR材料工具</span>
           </span>
         </div>
 
@@ -67,7 +67,7 @@ export function AppShell({ children, currentStep, footerMessage, onStepChange, s
             <p className="topbar__product">执行申请材料助手</p>
             <p className="topbar__subtitle">普通用户五步准备流程</p>
           </div>
-          <span className="demo-label">v1.0 核对草稿工具 · 不代替官方提交</span>
+          <span className="demo-label">v1.1 OCR核对草稿工具 · 不代替官方提交</span>
         </header>
 
         <div className="stepper" aria-label="流程进度">

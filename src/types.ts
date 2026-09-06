@@ -16,9 +16,10 @@ export type CalculationResult = {
 export type ReviewKey = "obligation" | "effective" | "performance" | "period" | "identity";
 export type Review = { note: string; confirmedAt: string | null };
 export type MaterialIndex = { name: string; size: number };
-export type Source = { material: CaseMaterialKey; name: string; location: string; quote: string };
-export type Candidate = { field: keyof CaseData; value: string; source: Source };
-export type TextPage = { location: string; text: string };
+export type Source = { material: CaseMaterialKey; name: string; location: string; quote: string; method?: "ocr" | "text"; confidence?: number; value?: string };
+export type Candidate = { field: keyof CaseData; value: string; source: Source; autoFill?: boolean; reason?: string };
+export type TextPage = { location: string; text: string; method?: "ocr" | "text"; confidence?: number; lines?: { text: string; confidence?: number }[] };
+export type ReadProgress = { message: string; progress?: number };
 export type CaseMaterial = MaterialIndex & {
   file: File | null; status: "idle" | "reading" | "ready" | "error" | "index";
   message: string; pages: TextPage[]; candidates: Candidate[];
@@ -30,6 +31,7 @@ export type AppState = {
   checklist: Record<string, boolean>; reviews: Record<ReviewKey, Review>;
   caseConfirmedAt: string | null; outputConfirmedAt: string | null;
   sources: Partial<Record<keyof CaseData, Source>>;
+  userEdited: Partial<Record<keyof CaseData, boolean>>;
 };
 export type DraftData = {
   version: 2; app: "execution-materials-assistant"; exportedAt: string; state: AppState;
