@@ -1,0 +1,44 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+*.pem
+*.key
+
+# Reference documents, designs, standalone demos and local case exports
+design/
+sources/
+assets/
+output/
+tmp/
+.tmp/
+trials/
+scripts/package-single-file.mjs
+*.doc
+*.docx
+*.pdf
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.zip
+*.html
+!index.html
+*本地草稿*.json
+*金额核对记录*.json
+*材料清单*.txt
+
+# Keep local agent instructions out of the source repository
+AGENTS.md
+.agents/
+.codex/
