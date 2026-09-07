@@ -682,6 +682,9 @@ textarea:focus-visible {
 .case-import-card.has-file { border-style: solid; border-color: #9cc4f2; background: #f9fcff; }
 .case-import-card__icon { display: grid; width: 34px; height: 34px; margin-bottom: 12px; place-items: center; color: var(--primary); border-radius: 8px; background: var(--primary-soft); }
 .case-import-card__copy { min-width: 0; width: 100%; flex: 1; }
+.identity-target { display: grid; gap: 6px; margin: 8px 0 12px; color: var(--muted); font-size: 11px; }
+.identity-target small { font-size: 10px; line-height: 1.6; }
+.identity-target select { width: 100%; min-width: 0; font-size: 11px; }
 .case-import-card h3 { margin: 0; font-size: 12px; line-height: 1.65; }
 .case-import-card p { min-height: 34px; margin: 5px 0 9px; color: var(--muted); font-size: 10.5px; line-height: 1.6; }
 .case-import-card__empty,

@@ -1,7 +1,7 @@
 {
   "name": "execution-materials-assistant",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "prepare:ocr": "node scripts/prepare-ocr.mjs",

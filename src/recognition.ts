@@ -1,29 +1,15 @@
-import { centsText, FIELD_LABELS, invalidateCase, moneyCents, validDate } from "./domain";
+import { centsText, FIELD_LABELS, invalidateCase, moneyCents } from "./domain";
 import type { AppState, Candidate, CaseData, CaseMaterialKey, TextPage } from "./types";
-
-export const MIN_AUTO_CONFIDENCE = 75;
-
-export function normalizeRecognitionText(text: string) {
-  return text.normalize("NFKC").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").replace(/(?<=[\u3400-\u9fff])[ \t]+(?=[\u3400-\u9fff])/g, "").replace(/[ \t]*([:：])[ \t]*/g, "$1").trim();
-}
+import { MIN_AUTO_CONFIDENCE, normalizeRecognitionText, validCandidate, type RecognitionDocument } from "./recognition-shared";
+import { enrichRecognition, type RecognitionOptions } from "./recognition-context";
+export { MIN_AUTO_CONFIDENCE, normalizeRecognitionText } from "./recognition-shared";
 
 export function sameFieldValue(field: keyof CaseData, first: string, second: string) {
   if (field === "principal") { try { return moneyCents(first) === moneyCents(second); } catch { /* malformed values stay distinct */ } }
   return first === second;
 }
 
-function validCandidate(field: keyof CaseData, value: string) {
-  if (!value || value.length > (field === "assetClue" || field === "requestSummary" ? 4000 : 300)) return false;
-  if (field === "effectiveDate") return validDate(value) && value <= new Date().toISOString().slice(0, 10);
-  if (field === "principal") { try { return moneyCents(value) > 0n; } catch { return false; } }
-  if (field === "applicantId" || field === "respondentId") return /^(?:\d{17}[\dX]|[0-9A-Z]{18}|\d{15})$/.test(value);
-  if (field === "applicantPhone") return /^[+\d()（）\-\s]{5,30}$/.test(value);
-  if (field === "applicantType" || field === "respondentType") return ["自然人", "法人或其他组织"].includes(value);
-  if (field === "basisType") return ["民事判决书", "民事裁定书", "民事调解书"].includes(value);
-  return true;
-}
-
-export function candidatesFromPages(pages: TextPage[], material: CaseMaterialKey, name: string): Candidate[] {
+function labeledCandidatesFromPages(pages: TextPage[], material: CaseMaterialKey, name: string): Candidate[] {
   const candidates: Candidate[] = [];
   const add = (field: keyof CaseData, value: string, page: TextPage, quote: string, confidence?: number, safe = true) => {
     value = value.trim();
@@ -43,7 +29,7 @@ export function candidatesFromPages(pages: TextPage[], material: CaseMaterialKey
       const confidence = line.confidence ?? page.confidence;
       const put = (field: keyof CaseData, value: string, safe = true) => add(field, value, page, raw, confidence, safe);
       if (/判决如下|裁定如下|调解协议如下/.test(text)) { inDisposition = true; uncertainSection = false; role = null; }
-      if (/诉讼请求|诉称|事实与理由|本院认为|本院查明/.test(text)) { role = null; inDisposition = false; uncertainSection = true; }
+      if (/诉称|事实与理由|本院认为|本院查明/.test(text) || !inDisposition && /诉讼请求/.test(text)) { role = null; inDisposition = false; uncertainSection = true; }
       if (/^(?:原告|被告|上诉人|被上诉人|委托|法定代表人|代理人|审判|书记员)/.test(text)) role = null;
       const kind = text.match(/^民事(?:判决|裁定|调解)书$/);
       if (kind) put("basisType", kind[0]);
@@ -98,8 +84,16 @@ export function candidatesFromPages(pages: TextPage[], material: CaseMaterialKey
   return candidates;
 }
 
+export function recognizeDocuments(documents: RecognitionDocument[], options: RecognitionOptions = {}) {
+  return enrichRecognition(documents, documents.flatMap(document => labeledCandidatesFromPages(document.pages, document.material, document.name)), options);
+}
+export function candidatesFromPages(pages: TextPage[], material: CaseMaterialKey, name: string): Candidate[] {
+  return recognizeDocuments([{ pages, material, name }]).candidates;
+}
+
 export function automaticFill(state: AppState, candidates: Candidate[]): AppState {
   const accepted: Candidate[] = [];
+  const resolvedNames = { applicantName: state.caseData.applicantName, respondentName: state.caseData.respondentName };
   for (const field of Object.keys(FIELD_LABELS) as (keyof CaseData)[]) {
     // Nonempty values and deliberate clears are never overwritten by a later OCR run.
     if (state.caseData[field].trim() || state.userEdited[field]) continue;
@@ -108,9 +102,12 @@ export function automaticFill(state: AppState, candidates: Candidate[]): AppStat
     const candidate = group.find(c => c.autoFill !== false && validCandidate(field, c.value) && (c.source.method !== "ocr" || (c.source.confidence ?? 0) >= MIN_AUTO_CONFIDENCE));
     if (candidate) accepted.push(candidate);
   }
-  if (!accepted.length) return state;
+  for (const candidate of accepted) if (candidate.field === "applicantName" || candidate.field === "respondentName") resolvedNames[candidate.field] = candidate.value;
+  // Async OCR may finish after a user changes a name. Never attach the old person's details to that new name.
+  const compatible = accepted.filter(candidate => !candidate.requires || Object.entries(candidate.requires).every(([field, name]) => resolvedNames[field as keyof typeof resolvedNames] === name));
+  if (!compatible.length) return state;
   const next = invalidateCase(state);
   next.caseData = { ...state.caseData }; next.sources = { ...state.sources };
-  for (const candidate of accepted) { next.caseData[candidate.field] = candidate.value; next.sources[candidate.field] = candidate.source; }
+  for (const candidate of compatible) { next.caseData[candidate.field] = candidate.value; next.sources[candidate.field] = candidate.source; }
   return next;
 }

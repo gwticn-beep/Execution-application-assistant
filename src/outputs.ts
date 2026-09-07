@@ -3,7 +3,7 @@ import { makeDraft, MATERIAL_KEYS } from "./drafts";
 import type { AppState, CaseMaterials } from "./types";
 
 export type DocumentBlock = { text: string; kind?: "title" | "heading" | "paragraph"; pageBreak?: boolean };
-export const TEMPLATE_VERSION = "材料核对草稿-v1.1-20260906";
+export const TEMPLATE_VERSION = "材料核对草稿-v1.1.1-20260906";
 export function applicationBlocks(s: AppState): DocumentBlock[] {
   const d = s.caseData, r = currentResult(s), c = s.calculation;
   const v = (text: string) => text.trim() || "待补充";
@@ -80,7 +80,7 @@ export async function buildPackage(s: AppState, materials: CaseMaterials, includ
     "02_本地草稿.json": strToU8(JSON.stringify(makeDraft(s, materials), null, 2)),
     "03_金额核对记录.json": strToU8(JSON.stringify({ input: { principal: s.caseData.principal, ...s.calculation }, result: currentResult(s) }, null, 2)),
     "04_材料清单.txt": strToU8("材料清单仅记录使用者勾选，不证明文件完整、已上传或有效。\n\n" + Object.entries(CHECKLIST).map(([k, label]) => `${s.checklist[k] ? "已勾选" : "未勾选"}  ${label}`).join("\n") + "\n\n本次选择的文件\n" + MATERIAL_KEYS.map(k => `${MATERIAL_LABELS[k]}：${materials[k]?.name ?? "未选择"}${materials[k] ? (materials[k]?.file && includeOriginals ? "（已按选择加入原文件）" : "（未加入原文件）") : ""}`).join("\n")),
-    "05_使用说明.txt": strToU8("执行申请材料助手 v1.1 核对草稿材料包\n\n不是已审核的法院提交包。申请书模板须经专业人员和受理法院要求核对；不要直接提交带待补充内容的草稿。\nOCR识别及自动填入可能存在错误，请逐项对照原件；任何字段均可手工修改。\nJSON及Word含明文案件资料，请妥善保管，勿公开分享。草稿JSON不含原始文件，导入后需重新核对；原文件仅在用户明确勾选时加入。\n请本人在人民法院在线服务网 https://zxfw.court.gov.cn/ 完成认证、上传与提交。工具不进行上述操作。\n"),
+    "05_使用说明.txt": strToU8("执行申请材料助手 v1.1.1 核对草稿材料包\n\n不是已审核的法院提交包。申请书模板须经专业人员和受理法院要求核对；不要直接提交带待补充内容的草稿。\nOCR识别、角色匹配及主文请求整理可能存在错误，请逐项对照原件；任何字段均可手工修改。\nJSON及Word含明文案件资料，请妥善保管，勿公开分享。草稿JSON不含原始文件，导入后需重新核对；原文件仅在用户明确勾选时加入。\n请本人在人民法院在线服务网 https://zxfw.court.gov.cn/ 完成认证、上传与提交。工具不进行上述操作。\n"),
   };
   if (includeOriginals) {
     for (const k of MATERIAL_KEYS) {

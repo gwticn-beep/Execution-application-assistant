@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { caseErrors, FIELD_LABELS, MATERIAL_LABELS, REVIEW_ITEMS } from "../domain";
-import type { AppState, Candidate, CaseAnalysisStatus, CaseData, CaseMaterialKey, CaseMaterials, ReviewKey } from "../types";
+import type { AppState, Candidate, CaseAnalysisStatus, CaseData, CaseMaterialKey, CaseMaterials, IdentityTarget, ReviewKey } from "../types";
 import { Button, Field, Input, Notice, SectionHeading, Select, Textarea } from "../components/Ui";
 import { Icon } from "../components/Icon";
 import { MATERIAL_KEYS } from "../drafts";
@@ -8,6 +8,7 @@ import { sameFieldValue } from "../recognition";
 
 type Props = {
   state: AppState; materials: CaseMaterials; analysisStatus: CaseAnalysisStatus;
+  analysisNotices: string[]; identityTarget: IdentityTarget; onIdentityTargetChange: (value: IdentityTarget) => void;
   onAnalyze: () => void; onMaterialChange: (key: CaseMaterialKey, file: File | null) => void;
   onCancel: () => void;
   onApplyCandidate: (candidate: Candidate) => void;
@@ -22,7 +23,7 @@ const sections: { title: string; hint: string; fields: (keyof CaseData)[] }[] = 
   { title: "执行请求", hint: "本金在案件、试算、文书与复制页使用同一数值；其他请求请明确写入简述。", fields: ["principal", "requestSummary"] },
 ];
 const optionalFields = ["applicantId", "respondentId", "respondentAddress", "assetClue"];
-export function CaseInfoPage({ state, materials, analysisStatus, onAnalyze, onCancel, onMaterialChange, onApplyCandidate, onChange, onConfirm, onReviewChange, onBack, onContinue }: Props) {
+export function CaseInfoPage({ state, materials, analysisStatus, analysisNotices, identityTarget, onIdentityTargetChange, onAnalyze, onCancel, onMaterialChange, onApplyCandidate, onChange, onConfirm, onReviewChange, onBack, onContinue }: Props) {
   const errors = caseErrors(state.caseData);
   const missingCount = Object.keys(errors).length;
   const candidates = MATERIAL_KEYS.flatMap(k => materials[k]?.candidates ?? []);
@@ -39,7 +40,8 @@ export function CaseInfoPage({ state, materials, analysisStatus, onAnalyze, onCa
         const material = materials[key];
         return <div className={`case-import-card ${material ? "has-file" : ""}`} key={key}>
           <span className="case-import-card__icon"><Icon name="file" size={20} /></span>
-          <div className="case-import-card__copy"><h3>导入{MATERIAL_LABELS[key]}</h3><p>{key === "secondInstance" ? "有二审时选取；不同字段值保留候选，不自动决定" : key === "identity" ? "支持证件OCR；未明确属于申请人或被执行人的文字需人工对应" : "可选判决书、裁定书或调解书"}</p>
+          <div className="case-import-card__copy"><h3>导入{MATERIAL_LABELS[key]}</h3><p>{key === "secondInstance" ? "有二审时选取；改判或对应不明时需人工核对" : key === "identity" ? "按姓名／名称与文书执行角色匹配；也可指定归属" : "识别当事人段落及主文中的收付款关系"}</p>
+            {key === "identity" ? <label className="identity-target">身份证明归属<Select aria-label="身份证明归属" value={identityTarget} disabled={analysisStatus === "parsing"} onChange={event => onIdentityTargetChange(event.target.value as IdentityTarget)}><option value="auto">自动按姓名／名称匹配</option><option value="applicant">申请执行人</option><option value="respondent">被执行人</option></Select><small>改变归属后请重新识别；姓名不符或含多个主体时不会强行填入。</small></label> : null}
             {material ? <><strong className="case-import-card__file">{material.name} · {(material.size / 1024).toFixed(1)} KB</strong><p role="status" className={material.status === "error" ? "inline-warning" : ""}>{material.message}</p></> : <span className="case-import-card__empty">尚未选择文件</span>}
           </div>
           <div className="material-buttons"><label className="file-picker"><Icon name="upload" size={15} /><span>{material ? "重新选择" : "选择文件"}</span><input accept=".pdf,.docx,.txt,.doc,.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff" aria-label={`导入${MATERIAL_LABELS[key]}`} disabled={analysisStatus === "parsing"} type="file" onChange={e => { const file = e.target.files?.[0]; if (file) onMaterialChange(key, file); e.target.value = ""; }} /></label>{material ? <Button tone="ghost" disabled={analysisStatus === "parsing"} onClick={() => onMaterialChange(key, null)} aria-label={`移除${MATERIAL_LABELS[key]}`}>移除</Button> : null}</div>
@@ -48,10 +50,11 @@ export function CaseInfoPage({ state, materials, analysisStatus, onAnalyze, onCa
       <div className="case-import-panel__actions"><p><Icon name="shield" size={15} />首次OCR需加载网站提供的程序与模型。原件和识别结果只在本机处理；Word内嵌图片请另存或转PDF。</p><div className="material-buttons">{analysisStatus === "parsing" ? <Button tone="secondary" onClick={onCancel}>取消识别</Button> : null}<Button icon="file" disabled={analysisStatus === "parsing" || !MATERIAL_KEYS.some(k => materials[k]?.file)} aria-busy={analysisStatus === "parsing"} onClick={onAnalyze}>{analysisStatus === "parsing" ? "正在本地识别…" : "OCR识别并自动填入"}</Button></div></div>
     </section>
     {autoFields.length ? <Notice title={`已自动填入${autoFields.length}项，仍待您核对`} tone="info">{autoFields.map(field => FIELD_LABELS[field]).join("、")}。可直接编辑或清空，修改后不会被重复识别覆盖。OCR不是法律审查。</Notice> : null}
+    {analysisNotices.length ? <Notice title="字段匹配提示" tone="info"><ul>{analysisNotices.map(message => <li key={message}>{message}</li>)}</ul></Notice> : null}
     {MATERIAL_KEYS.some(k => materials[k]?.pages.length) ? <details className="source-panel"><summary>查看识别文字及来源位置（仅当前会话）</summary>{MATERIAL_KEYS.map(k => materials[k]?.pages.length ? <section key={k}><h3>{materials[k]!.name}</h3>{materials[k]!.pages.map((p, i) => <div className="source-text" key={i}><strong>{p.location}{p.method === "ocr" ? ` · OCR参考分数${Math.round(p.confidence ?? 0)}/100` : ""}</strong><pre>{p.text || "本页未识别到文字，请对照原件人工核对。"}</pre></div>)}</section> : null)}</details> : null}
-    {candidates.length ? <section className="candidate-panel"><h2>识别字段与核对来源</h2><p>无冲突且达到参考分数要求的字段自动填入空白处。其他候选须人工采纳；参考分数不等于准确率。不会从原告、被告推定执行角色或管辖法院。</p><div className="candidate-list">{candidates.map((c, i) => {
+    {candidates.length ? <section className="candidate-panel"><h2>识别字段与核对来源</h2><p>按裁判主文明示的收付款关系匹配执行角色，按姓名／名称关联身份证明；不把原告、被告直接等同于执行角色。不确定或冲突时留待核对，不自动判断管辖，参考分数不等于准确率。</p><div className="candidate-list">{candidates.map((c, i) => {
       const conflict = candidates.some(other => other.field === c.field && !sameFieldValue(c.field, other.value, c.value)) || Boolean(state.caseData[c.field] && !sameFieldValue(c.field, state.caseData[c.field], c.value));
-      return <article className="candidate-row" key={i}><div><strong>{FIELD_LABELS[c.field]}：{c.value}</strong>{conflict ? <span className="status-chip status-chip--warning">存在不同值</span> : null}{state.caseData[c.field] === c.value ? <span className="status-chip status-chip--info">已填入 · 待核对</span> : null}<p>{c.source.name} · {c.source.location}{c.source.method === "ocr" ? ` · 参考分数${Math.round(c.source.confidence ?? 0)}/100` : ""}</p>{c.reason ? <p className="inline-warning">{c.reason}</p> : null}<blockquote>{c.source.quote}</blockquote></div><Button tone="secondary" disabled={analysisStatus === "parsing"} onClick={() => onApplyCandidate(c)} aria-label={`采纳${FIELD_LABELS[c.field]}候选${i + 1}`}>采纳此值</Button></article>;
+      return <article className="candidate-row" key={i}><div><strong>{FIELD_LABELS[c.field]}：{c.value}</strong>{conflict ? <span className="status-chip status-chip--warning">存在不同值</span> : null}{state.caseData[c.field] === c.value ? <span className="status-chip status-chip--info">已填入 · 待核对</span> : null}<p>{c.source.name} · {c.source.location}{c.source.method === "ocr" ? ` · 参考分数${Math.round(c.source.confidence ?? 0)}/100` : ""}</p>{c.reason ? <p className={c.autoFill === false ? "inline-warning" : ""}>{c.reason}</p> : null}<blockquote>{c.source.quote}</blockquote></div><Button tone="secondary" disabled={analysisStatus === "parsing"} onClick={() => onApplyCandidate(c)} aria-label={`采纳${FIELD_LABELS[c.field]}候选${i + 1}`}>采纳此值</Button></article>;
     })}</div></section> : analysisStatus === "complete" ? <Notice title="未发现可直接提议的字段" tone="info">请查看文件读取结果或已读取原文，手工填写。识别不到不会填入演示人名或金额。</Notice> : null}
     <div className="form-sections">{sections.map((section, i) => <section className="form-section" key={section.title}><SectionHeading number={i + 1} description={section.hint}>{section.title}</SectionHeading><div className="form-grid">
       {section.fields.map(field => <Field key={field} label={FIELD_LABELS[field]} required={!optionalFields.includes(field)} hint={state.sources[field] ? `${state.userEdited[field] ? "已由您修改或采纳" : "自动填入，待核对"}；识别来源：${state.sources[field]!.name} · ${state.sources[field]!.location}${state.sources[field]!.value && state.sources[field]!.value !== state.caseData[field] ? `；原识别值：${state.sources[field]!.value}` : ""}` : state.userEdited[field] ? "您已手工编辑，重复识别不会覆盖（包括主动清空）。" : undefined}>
